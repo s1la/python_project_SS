@@ -67,7 +67,8 @@ def process_and_plot(raw_data, output_dir):
     # BIOLOGICAL REPLICATES VARIATION
     # Calculate averages for each combination of Date-Strain-Environment
     # Also calculate associated SD - both propagating error and without doing so
-    
+    # Not sure yet which I want to keep, so both for now
+
     # Write a separate function to calculate this
     def bio_stats(condition):
         weights = 1 / (condition['std'] ** 2)
@@ -93,8 +94,37 @@ def process_and_plot(raw_data, output_dir):
     # NORMALIZE TO CONTROLS
     # Per date, if control = yes, divide all values with the same Date-Strain-Environment
     # By this value (incl. itself)
-    # Also normalize SD
-    # Add as an additional column 
+    # Also normalize SD - divide by mean control condition
+
+    # I will do this using a dictionary (wooo first time)
+    # Filter 'Control = yes' rows
+    control = conj_bio[conj_bio['Control'] == 'yes']
+    # Mapping each 'Date' to the corresponding 'mean', when 'Control' is 'yes'
+    control_dict = dict(control.groupby('Date')['Mean'].first())
+
+    # Create a function to divide each mean & std by the control mean from my dictionary
+    def normalize_mean(row):
+        date = row['Date']
+        control_mean = control_dict.get(date)
+        if control_mean is not None:
+            norm_mean = row['Mean'] / control_mean
+            norm_std = row['Std'] / control_mean
+            return pd.Series({'Normalized_Mean' : norm_mean, 'Normalized_Std' : norm_std})
+        else: 
+            raise ValueError(f'There is no control found for day {date}')
+    
+    # Apply the function
+    norm_data = conj_bio.apply(normalize_mean, axis = 1)
+
+    # Add additional columns to data
+    conj_bio = pd.concat([conj_bio, norm_data], axis = 1)
+
+    ### To propagate error: look into how to do this!!!
+
+    ### Save this output
+    norm_conj_path = os.path.join(output_dir, 'normalized_conj_efficiency.csv')
+    conj_bio.to_csv(norm_conj_path, index = False)
+
 
 # Create a function to generate our plots
 # def generate_plots(data, output_dir):
