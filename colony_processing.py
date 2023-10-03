@@ -2,6 +2,7 @@
 import argparse
 import pandas as pd
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -40,7 +41,7 @@ def process_and_plot(raw_data, output_dir):
         print(f"Error: The following matings are lacking either D or T counts, or have too many:")
         print(unequal_counts)
     else:
-        print("Each mating has exactly two corresponding rows. Great!")
+        print("Each technical replicate for a mating has exactly two corresponding rows. Great!")
         # If all is well, calculate the conjugation efficiency: Per unique ID, divide Full_Count(Plate = T)/ Full_Count(Plate=D)
         conj_eff = (
             raw_data.pivot(index= ['Date', 'Control', 'Strain', 'Environment', 'Biological_Replicate', 'Technical_Replicate'], columns = 'Plate', values = 'Full_Count')
@@ -55,16 +56,39 @@ def process_and_plot(raw_data, output_dir):
 
     # TECHNICAL REPLICATES VARIATION
     # Calculate the average of Conj_Eff for each combination of Date-Strain-Environment-Biological_Replicate combination
-    # Calculate the associated standard deviation too. 
+    # Calculate the associated standard deviation too (can be done in the same step)
+    conj_tech = conj_eff.groupby(['Date', 'Control', 'Strain', 'Environment', 'Biological_Replicate'])['Ratio'].agg(['mean', 'std']).reset_index()
+    
+    ### Save this output
+    tech_conj_path = os.path.join(output_dir, 'technical_replicates_conj_efficiency.csv')
+    conj_tech.to_csv(tech_conj_path, index = False)
 
-
-
-    # Save relevant columns
 
     # BIOLOGICAL REPLICATES VARIATION
     # Calculate averages for each combination of Date-Strain-Environment
-    # Also calculate associated SD - propagating error
-    # Save relevant columns
+    # Also calculate associated SD - both propagating error and without doing so
+    
+    # Write a separate function to calculate this
+    def bio_stats(condition):
+        weights = 1 / (condition['std'] ** 2)
+        weighted_mean = np.average(condition['mean'], weights = weights)
+        weighted_std = np.sqrt(1 / np.sum(weights))
+        unweighted_mean = condition['mean'].mean()
+        unweighted_std = condition['mean'].std()
+        return pd.Series({
+            'Weighted_Mean' : weighted_mean, 
+            'Weighted_Std' : weighted_std,
+            'Mean' : unweighted_mean,
+            'Std' : unweighted_std
+            })
+
+    # Apply this function to each identifier
+    conj_bio = conj_tech.groupby(['Date', 'Control', 'Strain', 'Environment']).apply(bio_stats).reset_index()
+
+    ### Save this output
+    conj_bio_path = os.path.join(output_dir, 'biological_replicates_conj_efficiency.csv')
+    conj_bio.to_csv(conj_bio_path, index = False)
+
 
     # NORMALIZE TO CONTROLS
     # Per date, if control = yes, divide all values with the same Date-Strain-Environment
