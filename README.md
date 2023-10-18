@@ -5,38 +5,29 @@ This repository contains a final project for the course 'Python for Biologists'.
 The goal of this project is to create an easier workflow to analyze manual mating assay results. 
 
 
-## Colony counting
+## Colony_processing
 
 ### Input
 
-When spotting onto the selective plates, do so according to the pattern provided on [layout_reference].
+This script accepts colony counting data in .csv format, including at least the columns 'Date', 'Control', 'Strain', 'Environment', 'Biological_Replicate', 'Technical_Replicate', 'Colony_Count', 'Dilution' and 'Plate' (as shown in [example_data.csv]).
 
-After performing a liquid mating assay, plates should be scanned using a ChemiDoc imaging system/ordinary tabletop scanner (decide!), and saved as a [filetype].
+### Running the script
 
-When naming the image files, do so according to the following pattern: **date_control:strain-environment_sample:strain-environment_D-or-T**, with D indicating Donor selecting plates and T indicating Transconjugant selecting plates.
+This script can be run from the terminal by writing the following: python colony_processing.py [input.csv]. 
 
-### Script
-
-[Information about how to use the script, and what it does.]
+The optional argument --output.dir can be added to change the name of the output directory. By default, this is the name of the input .csv file, followed by '_processed'.
 
 ### Output
 
-This script will output a .csv file containing eight columns, showing date, condition (strain, environment, sample, replicate), colony count, dilution at which this colony count was obtained, and D or T. 
-  
-## Data processing
+Absolute conjugation efficiency is calculated first, saved as '01_Absolute_Efficiency'.
 
-### Input
+This is then averaged accross technical replicates, and the standard deviation is calculated, saved as '02_Technical_Replicates_Efficiency'.
 
-This script can use the output from the Colony Counting script, or similarly structured data (see [example_data.csv]).
+The average and standard deviation accross all replicates is then calculated, and normalized to the controls. 
 
-### Script
+Per date, this is saved as '03_Normalized_Efficiency'. 
 
-This script can be run from the terminal by writing the following: python colony_processing.py [arguments].
+Accross dates, this is saved as '04_Normalized_Efficiency_All_Dates'.
 
-The average of your technological and biological repicates, with the associated standard deviations, is calculated.
+Finally, results per date and accross all dates are plotted, saved in '05_Conjugation_per_day' and '06_Full_Conjugation'.
 
-Sample data is normalized to corresponding controls per date. Averages per condition with standard deviations are plotted, with a separate figure per date. This is saved as [output_plot_1_name.pdf]
-
-For multi-day runs with the same sample conditions, plots are also generated with the data of multiple days. Both averages per condition with pooled variance, and boxplots are generated, with one figure per condition. This is saved as [output_plot_2_name.pdf]
-
-Finally, summary datafiles are generated, saved as [data_filenames.csv]
