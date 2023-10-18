@@ -1,20 +1,27 @@
-### Import necessary library modules
+#--- LIBRARY --------------------------
+#======================================
+# Import necessary library modules
 import argparse
 import pandas as pd
 import os
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotnine as p9
+#import matplotlib.pyplot as plt
+#import seaborn as sns
 
-# Creating a function to load in the csv file
+
+#--- LOADING CSV FILE -----------------
+#======================================
 def load_data(csv_file):
     raw_data = pd.read_csv(csv_file)
     return raw_data
 
-# Creating a function to process our data
-def process_and_plot(raw_data, output_dir):
+#--- PROCESSING DATA ------------------
+#======================================
+def process_data(raw_data, output_dir):
     
-    # RAW COUNTS
+    #--- RAW COUNTS -------------------
+    #----------------------------------
 
     # Calculate full colony count, add extra column to dataset
     # Colony_count / 10^Dilution, for each row -> Raw_count
@@ -24,10 +31,10 @@ def process_and_plot(raw_data, output_dir):
     raw_data['Full_Count'] = raw_data.apply(calc_full_count, axis = 1)
 
 
-    # CONJUGATION EFFICIENCY 
+    #--- CONJUGATION EFFICIENCY -------
+    #----------------------------------
 
     # Divide Donors by Transconjugants
-
     # Create a new column 'unique_identifier'
     
     raw_data['Identifier'] = raw_data[['Date', 'Strain', 'Environment', 'Biological_Replicate', 'Technical_Replicate']].astype(str).agg('-'.join, axis=1)
@@ -50,24 +57,27 @@ def process_and_plot(raw_data, output_dir):
             )
 
     #### Save the absolute conjugation efficiency
-    abs_conj_path = os.path.join(output_dir, 'absolute_conj_efficiency.csv')
+    abs_conj_path = os.path.join(output_dir, '01_Absolute_Efficiency.csv')
     conj_eff.to_csv(abs_conj_path, index=False)
 
 
-    # TECHNICAL REPLICATES VARIATION
+    #--- TECHNICAL REPLICATES ---------
+    #----------------------------------
+
     # Calculate the average of Conj_Eff for each combination of Date-Strain-Environment-Biological_Replicate combination
     # Calculate the associated standard deviation too (can be done in the same step)
     conj_tech = conj_eff.groupby(['Date', 'Control', 'Strain', 'Environment', 'Biological_Replicate'])['Ratio'].agg(['mean', 'std']).reset_index()
     
     ### Save this output
-    tech_conj_path = os.path.join(output_dir, 'technical_replicates_conj_efficiency.csv')
+    tech_conj_path = os.path.join(output_dir, '02_Technical_Replicates_Efficiency.csv')
     conj_tech.to_csv(tech_conj_path, index = False)
 
 
-    # BIOLOGICAL REPLICATES VARIATION
+    #--- BIOLOGICAL REPLICATES --------
+    #----------------------------------
+
     # Calculate averages for each combination of Date-Strain-Environment
-    # Also calculate associated SD - both propagating error and without doing so
-    # Not sure yet which I want to keep, so both for now
+    # Also calculate associated SD - no propagation of error
 
     # Write a separate function to calculate this
     def bio_stats(condition):
@@ -86,12 +96,12 @@ def process_and_plot(raw_data, output_dir):
     # Apply this function to each identifier
     conj_bio = conj_tech.groupby(['Date', 'Control', 'Strain', 'Environment']).apply(bio_stats).reset_index()
 
-    ### Save this output
-    conj_bio_path = os.path.join(output_dir, 'biological_replicates_conj_efficiency.csv')
-    conj_bio.to_csv(conj_bio_path, index = False)
+    # Appply accross all dates too 
+    conj_bio_all = conj_tech.groupby(['Strain', 'Control', 'Environment']).apply(bio_stats).reset_index()
 
+    #--- NORMALIZE TO CONTROLS --------
+    #----------------------------------
 
-    # NORMALIZE TO CONTROLS
     # Per date, if control = yes, divide all values with the same Date-Strain-Environment
     # By this value (incl. itself)
     # Also normalize SD - divide by mean control condition
@@ -99,7 +109,8 @@ def process_and_plot(raw_data, output_dir):
     # I will do this using a dictionary (wooo first time)
     # Filter 'Control = yes' rows
     control = conj_bio[conj_bio['Control'] == 'yes']
-    # Mapping each 'Date' to the corresponding 'mean', when 'Control' is 'yes'
+
+    # Mapping each 'Date' to the corresponding 'Mean', when 'Control' is 'yes'
     control_dict = dict(control.groupby('Date')['Mean'].first())
 
     # Create a function to divide each mean & std by the control mean from my dictionary
@@ -119,24 +130,66 @@ def process_and_plot(raw_data, output_dir):
     # Add additional columns to data
     conj_bio = pd.concat([conj_bio, norm_data], axis = 1)
 
-    ### To propagate error: look into how to do this!!!
-
     ### Save this output
-    norm_conj_path = os.path.join(output_dir, 'normalized_conj_efficiency.csv')
+    norm_conj_path = os.path.join(output_dir, '03_Normalized_Efficiency.csv')
     conj_bio.to_csv(norm_conj_path, index = False)
+    
+    # Accross all days: easier to calculate
+    control_row = conj_bio_all[conj_bio_all['Control'] == 'yes']
+    control_mean = control_row['Weighted_Mean'].values[0]
+    conj_bio_all['Normalized_Mean'] = conj_bio_all['Weighted_Mean'] / control_mean
+    conj_bio_all['Normalized_Std'] = conj_bio_all['Weighted_Std'] / control_mean
 
+    ### Save output
+    norm_all_path = os.path.join(output_dir, '04_Normalized_Efficiency_All_Days.csv')
+    conj_bio_all.to_csv(norm_all_path, index = False)
 
-# Create a function to generate our plots
-# def generate_plots(data, output_dir):
-    # PLOTTING PER DAY
-    # One figure per date
-    # Per day, plot norm avg per condition/strain + corresponding SD 
-    # Save all day plots together in one .pdf, named according to input file name
+    # Make sure to save conj_bio to use for plotting
+    return conj_bio, conj_bio_all
 
+#--- PLOTTING ---------------------
+#==================================
+
+def plotting(conj_bio, conj_bio_all, output_dir):
+
+    # Create a function to generate our plots
+
+    #--- PLOTTING PER DAY ----------
+    #===============================
+    
+    # Plot norm avg per condition/strain + corresponding SD(barplot)
+    plot = (
+        p9.ggplot(conj_bio, p9.aes(x='Environment', y='Normalized_Mean')) +
+        p9.geom_bar(stat='identity') +
+        p9.theme_light() +
+        p9.geom_errorbar(
+            p9.aes(ymin='Normalized_Mean - Normalized_Std', ymax='Normalized_Mean + Normalized_Std'),
+            position=p9.position_dodge(width=0.9),
+            width=0.25
+        ) +
+        p9.facet_wrap('~Date', scales='free')
+        )
+
+    # Save the plot as a pdf
+    output_path = os.path.join(output_dir, '05_Conjugation_per_day.pdf')
+    plot.save(output_path, format='pdf')
+    
     # PLOTTING ACCROSS DAYS
     # Per condition, plot norm avg + corresponding control, and their pooled SD
-    # Again, save in one .pdf
+    plot2 = (
+        p9.ggplot(conj_bio_all, p9.aes(x='Environment', y='Normalized_Mean')) +
+        p9.geom_bar(stat='identity') +
+        p9.theme_light() +
+        p9.geom_errorbar(
+            p9.aes(ymin='Normalized_Mean - Normalized_Std', ymax='Normalized_Mean + Normalized_Std'),
+            position=p9.position_dodge(width=0.9),
+            width=0.25
+        ) 
+        )
 
+    # Save the plot as a pdf
+    output_path2 = os.path.join(output_dir, '06_Full_Conjugation.pdf')
+    plot2.save(output_path2, format='pdf')
 
 # Creating main function - argparse
 
@@ -150,7 +203,7 @@ def main():
 
     parser.add_argument("input_csv", help = "Input CSV file name. Should include Date, Control, Strain, Environment, Biological_ and Technical_Replicate, Colony_Count, Dilution and Plate columns")
 
-    parser.add_argument("--output_dir", default="plots", help="Specify name for output directory. Input file name + '_processed' by default")
+    parser.add_argument("--output_dir", help="Specify name for output directory. Input file name + '_processed' by default")
 
 # Parse command-line arguments
 
@@ -169,8 +222,11 @@ def main():
     # Load data
     raw_data = load_data(args.input_csv)
 
-    # Process data and generate plots
-    process_and_plot(raw_data, args.output_dir)
+    # Process data
+    conj_bio, conj_bio_all = process_data(raw_data, args.output_dir)
+
+    # Generate plots
+    plotting(conj_bio, conj_bio_all, args.output_dir)
 
 if __name__ == "__main__":
     main()
