@@ -17,6 +17,16 @@ This script can be run from the terminal by writing the following: python colony
 
 The optional argument --output.dir can be added to change the name of the output directory. By default, this is the name of the input .csv file, followed by '_processed'.
 
+To ensure the script runs correctly, you can set up an environment using the provided Conda and pip requirements:
+
+  conda create --name [environment_name]
+  
+  conda install --file environment_python_project_SS.yml
+  
+  pip install -r requirements_python_project_SS.txt
+  
+  & then running the script from there 
+
 ### Output
 
 Absolute conjugation efficiency is calculated first, saved as '01_Absolute_Efficiency'.
